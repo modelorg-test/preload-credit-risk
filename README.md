@@ -1,2 +1,3 @@
-# preload-credit-risk
-Auto-created test repo (preload-credit-risk)
+# Credit Risk Model
+
+See `.mrm/` for model governance.
