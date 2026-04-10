@@ -42,6 +42,8 @@ jobs:
   build-and-release:
     needs: prepare-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare-release.outputs.target_models) }}
@@ -80,12 +82,17 @@ jobs:
           echo "$FQDN" > ${MODEL}-${VERSION}-image-fqdn.txt
           echo "Docker Image for ${MODEL} is accessible at: $FQDN"
 
+      - name: Read FQDN for Release Body
+        id: read_fqdn
+        run: |
+          echo "fqdn=$(cat ${{ matrix.model }}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt)" >> $GITHUB_OUTPUT
+
       - name: Upload Artifacts to Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-artifacts.zip
-            ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt
+            ${{ matrix.model }}-${{ needs.prepare-release.outputs.tag_version }}-artifacts.zip
+            ${{ matrix.model }}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt
           name: ${{ github.ref_name }}
           # Generate a generic release template
           body: |
@@ -93,4 +100,4 @@ jobs:
             
             Automated model artifact generation.
             
-            **Docker FQDN Image String:** `$(cat ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt)`
+            **Docker FQDN Image String:** `${{ steps.read_fqdn.outputs.fqdn }}`
