@@ -1,0 +1,96 @@
+name: Model Release
+
+on:
+  push:
+    tags:
+      - '*/v[0-9]+.[0-9]+.[0-9]+'  # Independent model releases (e.g. credit-risk/v1.0.0)
+      - 'v[0-9]+.[0-9]+.[0-9]+'    # Global monorepo releases (e.g. v1.0.0)
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      is_global: ${{ steps.parse.outputs.is_global }}
+      target_models: ${{ steps.parse.outputs.target_models }}
+      tag_version: ${{ steps.parse.outputs.tag_version }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Parse Tag
+        id: parse
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          
+          if [[ "$TAG_NAME" == v* ]]; then
+            # Global Release
+            echo "is_global=true" >> $GITHUB_OUTPUT
+            echo "tag_version=${TAG_NAME}" >> $GITHUB_OUTPUT
+            
+            # Find all models in the models/ directory
+            MODELS_JSON=$(ls -d models/*/ | awk -F/ '{print $2}' | jq -R -s -c 'split("\n")[:-1]')
+            echo "target_models={\"model\":${MODELS_JSON}}" >> $GITHUB_OUTPUT
+          else
+            # Independent Model Release (e.g. credit-risk/v1.0.0)
+            MODEL_NAME=$(echo "$TAG_NAME" | cut -d/ -f1)
+            VERSION=$(echo "$TAG_NAME" | cut -d/ -f2)
+            
+            echo "is_global=false" >> $GITHUB_OUTPUT
+            echo "tag_version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "target_models={\"model\":[\"${MODEL_NAME}\"]}" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-release:
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-release.outputs.target_models) }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bundle Artifacts
+        run: |
+          MODEL="${{ matrix.model }}"
+          VERSION="${{ needs.prepare-release.outputs.tag_version }}"
+          
+          mkdir -p dist/${MODEL}
+          
+          # Step 1: Execute arbitrary build script if it exists
+          if [ -f "models/${MODEL}/build.sh" ]; then
+            bash models/${MODEL}/build.sh
+          fi
+
+          # Step 2: Extract any generated artifacts from the model's dist/ path (Artifact agnostic)
+          if [ -d "models/${MODEL}/dist" ]; then
+            cp -r models/${MODEL}/dist/* dist/${MODEL}/
+          fi
+          
+          # Step 3: Bundle everything into a zip for the release
+          zip -r ${MODEL}-${VERSION}-artifacts.zip dist/${MODEL}/
+
+      - name: Register Docker Image FQDN
+        run: |
+          MODEL="${{ matrix.model }}"
+          VERSION="${{ needs.prepare-release.outputs.tag_version }}"
+          
+          # Format: ghcr.io/<org>/<repo>/<model>:<version>
+          FQDN="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${MODEL}:${VERSION}"
+          
+          echo "$FQDN" > ${MODEL}-${VERSION}-image-fqdn.txt
+          echo "Docker Image for ${MODEL} is accessible at: $FQDN"
+
+      - name: Upload Artifacts to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-artifacts.zip
+            ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt
+          name: ${{ github.ref_name }}
+          # Generate a generic release template
+          body: |
+            ## Release ${{ github.ref_name }}
+            
+            Automated model artifact generation.
+            
+            **Docker FQDN Image String:** `$(cat ${MODEL}-${{ needs.prepare-release.outputs.tag_version }}-image-fqdn.txt)`

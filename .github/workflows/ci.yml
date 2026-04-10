@@ -1,0 +1,65 @@
+name: CI Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Changed Models
+        id: set-matrix
+        run: |
+          # Finds all top-level model directories that have changed
+          CHANGED_DIRS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^models/' | awk -F/ '{print $2}' | sort -u || true)
+          
+          if [ -z "$CHANGED_DIRS" ]; then
+            echo "matrix={\"model\":[]}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Format as JSON array for matrix
+          MODELS_JSON=$(echo "$CHANGED_DIRS" | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix={\"model\":${MODELS_JSON}}" >> $GITHUB_OUTPUT
+
+  validate-models:
+    needs: detect-changes
+    if: ${{ fromJSON(needs.detect-changes.outputs.matrix).model[0] != null }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-changes.outputs.matrix) }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Environment
+        run: |
+          echo "Validating model: ${{ matrix.model }}"
+      
+      - name: Validate model_card.yaml
+        run: |
+          if [ -f "models/${{ matrix.model }}/model_card.yaml" ]; then
+            echo "Validating schema for models/${{ matrix.model }}/model_card.yaml"
+            # Replace with actual CLI tool: e.g. mrm-cli validate models/${{ matrix.model }}/model_card.yaml
+          else
+            echo "Warning: No model_card.yaml found for ${{ matrix.model }}"
+          fi
+
+      - name: Run Model Tests
+        run: |
+          if [ -d "models/${{ matrix.model }}/tests" ]; then
+            echo "Running test suite for ${{ matrix.model }}"
+            # e.g. pytest models/${{ matrix.model }}/tests
+          else
+            echo "No tests directory found for ${{ matrix.model }}"
+          fi
