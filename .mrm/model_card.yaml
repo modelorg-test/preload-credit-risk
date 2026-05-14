@@ -1,0 +1,17 @@
+name: Retail Credit Risk Scorecard
+description: Logistical regression scorecard evaluating default likelihood for personal
+  loans within the UAE.
+stage: development
+current_version: 1.0.0
+risk_tier: high
+framework: scikit-learn
+owner: retail-risk-modeling
+scope: Retail Lending
+classification: Tier 1
+tags:
+  domain: credit
+  regulation: cbuae
+  env: production
+metrics:
+  auc_roc: 0.89
+  gini: 0.65

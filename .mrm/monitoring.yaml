@@ -1,0 +1,10 @@
+drift_detection: true
+features:
+- income
+- debt_ratio
+- credit_history_years
+psi_threshold: 0.15
+quality_metrics:
+- completeness
+- uniqueness
+schedule: daily

@@ -1,0 +1,8 @@
+model_owners:
+- jane.doe@modelorg.com
+model_developers:
+- john.smith@modelorg.com
+mrm_group:
+- mrm-validation@modelorg.com
+validation_team:
+- independent-validation@modelorg.com
